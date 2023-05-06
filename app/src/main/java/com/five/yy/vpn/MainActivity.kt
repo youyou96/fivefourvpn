@@ -63,8 +63,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
         binding.contentLayout.homeConnectLogo.setOnClickListener {
             if (binding.drawerLayout.isOpen || !isClick()) {
                 return@setOnClickListener
-            } else {
-                binding.contentLayout.connectStatus.progress = 0.0
+            }
+            if (state.canStop) {
+                cancelConnectionJob()
             }
             val intent = Intent(this, ServiceActivity::class.java)
             intent.putExtra("isConnection", state.canStop)
@@ -73,20 +74,22 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
         binding.contentLayout.homeSettingSrc.setOnClickListener {
             if (!isClick()) {
                 return@setOnClickListener
-            } else {
-                binding.contentLayout.connectStatus.progress = 0.0
             }
             if (binding.drawerLayout.isOpen) {
                 binding.drawerLayout.close()
             } else {
                 binding.drawerLayout.open()
             }
+            if (state.canStop) {
+                cancelConnectionJob()
+            }
         }
         binding.contentLayout.homeServerSrc.setOnClickListener {
             if (binding.drawerLayout.isOpen || !isClick()) {
                 return@setOnClickListener
-            } else {
-                binding.contentLayout.connectStatus.progress = 0.0
+            }
+            if (state.canStop) {
+                cancelConnectionJob()
             }
             //choose service
             val intent = Intent(this, ServiceActivity::class.java)
@@ -96,10 +99,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
         binding.contentLayout.connectStatus.setOnClickListener {
             if (binding.drawerLayout.isOpen || !isClick()) {
                 return@setOnClickListener
-            } else {
-                binding.contentLayout.connectStatus.progress = 0.0
             }
-            isClickConnect = true
+            if (state.canStop) {
+                if (connectionJob?.isActive == true) {
+                    cancelConnectionJob()
+                    return@setOnClickListener
+                }
+            }
             if (!ButtonUtils.isFastDoubleClick(R.id.connect_status)) {
                 connectVpn()
             }
@@ -127,8 +133,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
         binding.contentLayout.homeServerSrc.setOnClickListener {
             if (binding.drawerLayout.isOpen || !isClick()) {
                 return@setOnClickListener
-            } else {
-                binding.contentLayout.connectStatus.progress = 0.0
+            }
+            if (state.canStop) {
+                cancelConnectionJob()
             }
             //choose service
             val intent = Intent(this, ServiceActivity::class.java)
@@ -212,6 +219,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
     }
 
     private fun connectVpn() {
+        isClickConnect = true
         if (InterNetUtil().isShowIR()) {
             showDialogByActivity(
                 "Due to the policy reason , this service is not available in your country",
@@ -374,7 +382,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
 
     private fun changeConnectionStatus(status: BaseService.State) {
         this.state = status
-        isClickConnect = false
         when (status) {
             BaseService.State.Idle -> {
                 SPUtils.get().putBoolean(Constant.isConnectStatus, false)
@@ -386,6 +393,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
                 Toast.makeText(this, "please try again", Toast.LENGTH_LONG).show()
             }
             BaseService.State.Connected -> {
+                isClickConnect = false
                 SPUtils.get().putBoolean(Constant.isConnectStatus, true)
                 if (countryBean != null) {
                     SPUtils.get()
@@ -507,7 +515,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
             binding.contentLayout.connectStatus.text = "Connecting"
         }
         SPUtils.get().putBoolean(Constant.isShowResultKey, true)
-
         connectionJob = lifecycleScope.launch {
             flow {
                 (0 until 10).forEach {
@@ -525,12 +532,16 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
                 connectAnnotation()
             }.onCompletion {
                 //finish
-                if (binding.contentLayout.connectStatus.progress > 0) {
+                if (binding.contentLayout.connectStatus.progress > 0 && !isCancel) {
                     if (state.canStop) {
                         Core.stopService()
                     } else {
                         Core.startService()
                     }
+                }
+                if (isCancel) {
+                    isCancel = false
+                    binding.contentLayout.connectStatus.progress = 100.0
                 }
 
             }.collect {
@@ -539,10 +550,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
 //                    loadInterAd(customizedDialog!!)
 //                }
 
-                if (binding.contentLayout.connectStatus.progress == 0.0 && time > 1) {
-                    connectionJob?.cancel()
-                    return@collect
-                }
                 binding.contentLayout.connectStatus.progress = (time * 100 / 10).toDouble()
 //                if (customizedDialog?.isShowing == false) {
 //                    connectionJob?.cancel()
@@ -566,27 +573,41 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
         countryBean = null
     }
 
-
+    private var isCancel = false
     private fun isClick(): Boolean {
-        if (binding.contentLayout.connectStatus.progress > 0 && binding.contentLayout.connectStatus.progress < 100 && !state.canStop) {
-            return false
+        if (state.canStop) {
+            isClickConnect = false
+            return true
         } else {
+            if (binding.contentLayout.connectStatus.progress > 0 && binding.contentLayout.connectStatus.progress < 100) {
+                return false
+            }
             if (isClickConnect) {
                 return false
             }
         }
+        Log.d("xxxxxx", "" + binding.contentLayout.connectStatus.progress + "...." + isClickConnect)
         return true
     }
 
     override fun onRestart() {
         super.onRestart()
+        isCancel = false
         isClickConnect = false
     }
 
-    override fun onBackPressed() {
-        if (isClick()) {
-            binding.contentLayout.connectStatus.progress = 0.0
-            finish()
+
+    private fun cancelConnectionJob() {
+        if (connectionJob != null && connectionJob!!.isActive) {
+            isCancel = true
+            connectionJob?.cancel()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (state.canStop) {
+            cancelConnectionJob()
         }
     }
 }
