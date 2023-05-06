@@ -49,6 +49,7 @@ import java.util.*
 class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.Callback,
     OnPreferenceDataStoreChangeListener {
     private var state = BaseService.State.Idle
+    private var isClickConnect = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 //        setContentView(R.layout.activity_main)
@@ -98,6 +99,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
             } else {
                 binding.contentLayout.connectStatus.progress = 0.0
             }
+            isClickConnect = true
             if (!ButtonUtils.isFastDoubleClick(R.id.connect_status)) {
                 connectVpn()
             }
@@ -372,7 +374,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
 
     private fun changeConnectionStatus(status: BaseService.State) {
         this.state = status
-
+        isClickConnect = false
         when (status) {
             BaseService.State.Idle -> {
                 SPUtils.get().putBoolean(Constant.isConnectStatus, false)
@@ -380,6 +382,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
                 binding.contentLayout.theConnectionTimeTv.stop()
                 binding.contentLayout.theConnectionTimeTv.text = "00:00:00"
                 binding.contentLayout.connectStatus.text = "Disconnected"
+                binding.contentLayout.connectStatus.progress = 0.0
                 Toast.makeText(this, "please try again", Toast.LENGTH_LONG).show()
             }
             BaseService.State.Connected -> {
@@ -394,6 +397,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
                 }
 //                binding.contentLayout.connectStatus.setBackgroundResource(R.drawable.disconnect_button)
                 binding.contentLayout.connectStatus.text = "Connected"
+                binding.contentLayout.connectStatus.progress = 100.0
                 binding.contentLayout.theConnectionTimeTv.setOnChronometerTickListener {
                     val time = SystemClock.elapsedRealtime() - it.base
                     val date = Date(time)
@@ -433,6 +437,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
             BaseService.State.Stopped -> {
 //                binding.contentLayout.connectStatus.setBackgroundResource(R.drawable.connect_button)
                 binding.contentLayout.connectStatus.text = "Disconnected"
+                binding.contentLayout.connectStatus.progress = 0.0
                 binding.contentLayout.theConnectionTimeTv.stop()
                 binding.contentLayout.theConnectionTimeTv.text = "00:00:00"
                 SPUtils.get().putLong(Constant.connectTime, 0L)
@@ -481,6 +486,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
                 SPUtils.get().putBoolean(Constant.isConnectStatus, false)
 //                binding.contentLayout.connectStatus.setBackgroundResource(R.drawable.connect_button)
                 binding.contentLayout.connectStatus.text = "Disconnected"
+                binding.contentLayout.connectStatus.progress = 0.0
                 binding.contentLayout.theConnectionTimeTv.base = SystemClock.elapsedRealtime()
                 binding.contentLayout.theConnectionTimeTv.stop()
                 binding.contentLayout.theConnectionTimeTv.text = "00:00:00"
@@ -564,8 +570,17 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), ShadowsocksConnection.
     private fun isClick(): Boolean {
         if (binding.contentLayout.connectStatus.progress > 0 && binding.contentLayout.connectStatus.progress < 100 && !state.canStop) {
             return false
+        } else {
+            if (isClickConnect) {
+                return false
+            }
         }
         return true
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        isClickConnect = false
     }
 
     override fun onBackPressed() {
